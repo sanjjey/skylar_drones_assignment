@@ -13,10 +13,19 @@ from app.services.monday_service import monday_service
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("main")
 
+# Auto-initialize local datasets on boot/import
+try:
+    monday_service.load_local_datasets()
+except Exception as e:
+    logger.warning(f"Initial dataset load note: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing Skylark Drones BI Agent and caching board datasets...")
-    await monday_service.sync_data(force_refresh=False)
+    try:
+        await monday_service.sync_data(force_refresh=False)
+    except Exception as e:
+        logger.warning(f"Lifespan sync note: {e}")
     logger.info("Initialization complete. BI Engine ready.")
     yield
 
@@ -35,14 +44,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register Sub-routers
+# Register Sub-routers with /api prefix
 app.include_router(agent_router, prefix=settings.API_PREFIX)
 app.include_router(bi_router, prefix=settings.API_PREFIX)
 app.include_router(monday_router, prefix=settings.API_PREFIX)
 app.include_router(leadership_router, prefix=settings.API_PREFIX)
 app.include_router(session_router, prefix=settings.API_PREFIX)
 
+# Also register without prefix so /bi/cross-board or /api/bi/cross-board both work seamlessly
+app.include_router(agent_router)
+app.include_router(bi_router)
+app.include_router(monday_router)
+app.include_router(leadership_router)
+app.include_router(session_router)
+
 @app.get("/health")
+@app.get("/api/health")
 async def health_check():
     sync = monday_service.get_sync_status()
     return {
