@@ -24,12 +24,21 @@ export default function App() {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  // Failure Alerts & Toast State
-  const [errorToast, setErrorToast] = useState(null);
+  const [toastMessage, setToastMessage] = useState(null);
+  const [toastType, setToastType] = useState('info'); // 'info' | 'error' | 'success'
 
   // Modals
   const [isLeadershipOpen, setIsLeadershipOpen] = useState(false);
   const [isDataHealthOpen, setIsDataHealthOpen] = useState(false);
+
+  const showToast = (msg, type = 'info') => {
+    setToastMessage(msg);
+    setToastType(type);
+    setTimeout(() => setToastMessage(null), 5000);
+  };
+
+  const showErrorToast = (msg) => showToast(msg, 'error');
+  const showSuccessToast = (msg) => showToast(msg, 'success');
 
   // 1. Initial Load: Status, KPIs & Saved Sessions
   useEffect(() => {
@@ -56,7 +65,7 @@ export default function App() {
         }
       } catch (err) {
         console.error('Failed to load initial data:', err);
-        showErrorToast('Failed to connect to backend server. Running in offline resilient mode.');
+        showErrorToast('Backend API not reachable. Please ensure backend server is running.');
       } finally {
         setIsLoadingKpis(false);
       }
@@ -65,123 +74,27 @@ export default function App() {
     loadInitialData();
   }, []);
 
-  const showErrorToast = (msg) => {
-    setErrorToast(msg);
-    setTimeout(() => setErrorToast(null), 6000);
-  };
-
-  const loadSessionMessages = async (sessionId) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/sessions/${sessionId}`);
-      const data = await res.json();
-      const formatted = data.map(m => ({
-        sender: m.sender,
-        text: m.text,
-        chart: m.chart_data,
-        caveats: m.caveats,
-        clarification: m.clarification,
-        suggested_followups: m.suggested_followups
-      }));
-      setMessages(formatted);
-    } catch (err) {
-      console.error('Failed to load session messages:', err);
-    }
-  };
-
-  const handleSelectSession = (sessionId) => {
-    setActiveSessionId(sessionId);
-    loadSessionMessages(sessionId);
-    setActiveTab('agent');
-  };
-
-  const handleNewSession = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/sessions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'New Conversation' })
-      });
-      const newSess = await res.json();
-      setSessions((prev) => [newSess, ...prev]);
-      setActiveSessionId(newSess.id);
-      setMessages([]);
-      setActiveTab('agent');
-    } catch (err) {
-      console.error('Failed to create session:', err);
-      showErrorToast('Supabase storage unavailable. Started session in memory.');
-    }
-  };
-
-  const handleRenameSession = async (sessionId, newTitle) => {
-    try {
-      await fetch(`${API_BASE}/api/sessions/${sessionId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newTitle })
-      });
-      setSessions((prev) => prev.map(s => s.id === sessionId ? { ...s, title: newTitle } : s));
-    } catch (err) {
-      console.error('Failed to rename session:', err);
-      showErrorToast('Failed to rename session on server.');
-    }
-  };
-
-  const handleDeleteSession = async (sessionId) => {
-    try {
-      await fetch(`${API_BASE}/api/sessions/${sessionId}`, { method: 'DELETE' });
-      setSessions((prev) => prev.filter(s => s.id !== sessionId));
-      if (activeSessionId === sessionId) {
-        const remaining = sessions.filter(s => s.id !== sessionId);
-        if (remaining.length > 0) {
-          setActiveSessionId(remaining[0].id);
-          loadSessionMessages(remaining[0].id);
-        } else {
-          handleNewSession();
-        }
-      }
-    } catch (err) {
-      console.error('Failed to delete session:', err);
-    }
-  };
-
-  const handleUndoLastMessage = async () => {
-    if (messages.length === 0) return;
-    const newLen = Math.max(0, messages.length - 2);
-    setMessages(prev => prev.slice(0, newLen));
-
-    if (activeSessionId) {
-      fetch(`${API_BASE}/api/sessions/${activeSessionId}/truncate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from_index: newLen })
-      }).catch(console.error);
-    }
-  };
-
-  const handleEditMessage = async (messageIndex) => {
-    setMessages(prev => prev.slice(0, messageIndex));
-
-    if (activeSessionId) {
-      fetch(`${API_BASE}/api/sessions/${activeSessionId}/truncate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from_index: messageIndex })
-      }).catch(console.error);
-    }
-  };
-
   const handleSync = async () => {
     setIsSyncing(true);
     try {
       const res = await fetch(`${API_BASE}/api/monday/sync`, { method: 'POST' });
       const data = await res.json();
       setSyncStatus(data);
+      
       const kpisRes = await fetch(`${API_BASE}/api/bi/kpis`);
       const kpisData = await kpisRes.json();
       setKpis(kpisData);
+
+      if (data.is_live_connected) {
+        showSuccessToast('✅ Live Monday.com boards successfully synchronized!');
+      } else if (data.warning) {
+        showToast(`ℹ️ ${data.warning}`, 'info');
+      } else {
+        showSuccessToast('✅ Datasets refreshed (Local Fallback Mode: 346 deals, 176 work orders).');
+      }
     } catch (err) {
       console.error('Sync failed:', err);
-      showErrorToast('Monday.com sync encountered rate-limiting or network error.');
+      showErrorToast('⚠️ Could not reach backend server at ' + (API_BASE || 'localhost:8000'));
     } finally {
       setIsSyncing(false);
     }
@@ -268,14 +181,22 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans relative">
-      {/* Top Error / Resilience Notification Banner */}
-      {errorToast && (
-        <div className="bg-amber-500/20 border-b border-amber-500/40 px-4 py-2 text-xs text-amber-300 flex items-center justify-between z-50 animate-in slide-in-from-top duration-200">
+      {/* Top Notification / Resilience Banner */}
+      {toastMessage && (
+        <div className={`border-b px-4 py-2 text-xs flex items-center justify-between z-50 animate-in slide-in-from-top duration-200 ${
+          toastType === 'error'
+            ? 'bg-rose-500/20 border-rose-500/40 text-rose-300'
+            : toastType === 'success'
+            ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+            : 'bg-blue-500/20 border-blue-500/40 text-blue-300'
+        }`}>
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-            <span>{errorToast}</span>
+            <AlertTriangle className={`w-4 h-4 shrink-0 ${
+              toastType === 'error' ? 'text-rose-400' : toastType === 'success' ? 'text-emerald-400' : 'text-blue-400'
+            }`} />
+            <span>{toastMessage}</span>
           </div>
-          <button onClick={() => setErrorToast(null)} className="p-1 hover:text-white cursor-pointer">
+          <button onClick={() => setToastMessage(null)} className="p-1 hover:text-white cursor-pointer">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
