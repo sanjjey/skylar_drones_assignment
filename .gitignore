@@ -33,6 +33,12 @@ backend/tests/__pycache__/
 .coverage
 htmlcov/
 
+# Temporary / Office lock files
+~$*
+*.tmp
+*.docx
+!DECISION_LOG.md
+
 # Logs
 *.log
 npm-debug.log*
