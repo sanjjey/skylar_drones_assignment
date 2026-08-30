@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+backend/venv/
+backend/.venv/
+env/
+.env
+
+# Environment Variables (Keep examples, ignore actual secrets)
+backend/.env
+frontend/.env.local
+frontend/.env.*.local
+*.env
+!.env.example
+!backend/.env.example
+
+# Build outputs
+frontend/dist/
+frontend/dist-ssr/
+*.local
+
+# Python cache & artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/__pycache__/
+backend/app/__pycache__/
+backend/app/routes/__pycache__/
+backend/app/services/__pycache__/
+backend/tests/__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
